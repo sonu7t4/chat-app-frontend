@@ -47,7 +47,6 @@ export default function ChatPage() {
   // --------------------------------
 
   const handleAuthFailure = () => {
-    localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("receiverId");
     router.push("/login");
@@ -85,20 +84,11 @@ export default function ChatPage() {
     setLoadingMessages(true);
 
     try {
-      const token = localStorage.getItem("token");
-
-      if (!token) {
-        handleAuthFailure();
-        return;
-      }
-
       const response = await fetch(
         `${API_URL}/api/messages/${userId}`,
         {
           method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         },
       );
 
@@ -173,17 +163,8 @@ export default function ChatPage() {
 
   const loadUsers = async () => {
     try {
-      const token = localStorage.getItem("token");
-
-      if (!token) {
-        handleAuthFailure();
-        return;
-      }
-
       const response = await fetch(`${API_URL}/api/users`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
       });
 
       if (response.status === 401) {
@@ -249,16 +230,8 @@ export default function ChatPage() {
   // --------------------------------
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      return;
-    }
-
     const newSocket = io(SOCKET_URL, {
-      auth: {
-        token,
-      },
+      withCredentials: true,
       transports: ["websocket", "polling"],
     });
 
@@ -764,15 +737,11 @@ export default function ChatPage() {
 
         formData.append("image", selectedImage);
 
-        const token = localStorage.getItem("token");
-
         const response = await fetch(
           `${API_URL}/api/messages/upload`,
           {
             method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+            credentials: "include",
             body: formData,
           },
         );

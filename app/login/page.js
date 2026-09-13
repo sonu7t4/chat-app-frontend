@@ -38,6 +38,7 @@ export default function LoginPage() {
           headers: {
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify(formData),
         }
       );
@@ -47,9 +48,6 @@ export default function LoginPage() {
       if (!response.ok) {
         throw new Error(data.message || "Login failed");
       }
-
-      // Store JWT
-      localStorage.setItem("token", data.token);
 
       // Store user
       localStorage.setItem(
