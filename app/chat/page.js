@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { io } from "socket.io-client";
-import { API_URL, SOCKET_URL } from "../../lib/config";
+import { API_URL } from "../../lib/config";
 import ThemeToggle from "../components/ThemeToggle";
 
 export default function ChatPage() {
@@ -230,7 +230,11 @@ export default function ChatPage() {
   // --------------------------------
 
   useEffect(() => {
-    const newSocket = io(SOCKET_URL, {
+    const token = localStorage.getItem("token");
+    const newSocket = io(process.env.NEXT_PUBLIC_API_URL, {
+      auth: {
+        token,
+      },
       withCredentials: true,
       transports: ["websocket", "polling"],
     });
