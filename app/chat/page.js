@@ -24,6 +24,9 @@ export default function ChatPage() {
   const [user, setUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   // Loading states
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -50,6 +53,28 @@ export default function ChatPage() {
     localStorage.removeItem("user");
     localStorage.removeItem("receiverId");
     router.push("/login");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_URL}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.error("Logout error:", error.message);
+    } finally {
+      socket?.disconnect();
+      localStorage.removeItem("user");
+      localStorage.removeItem("receiverId");
+      setUser(null);
+      setSelectedUser(null);
+      setMessages([]);
+      setUsers([]);
+      setUnreadCounts({});
+      setLastMessages({});
+      router.push("/login");
+    }
   };
 
   // --------------------------------
@@ -216,6 +241,58 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
+    const query = searchQuery.trim();
+
+    if (!query) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+
+        const response = await fetch(
+          `${API_URL}/api/users/search?q=${encodeURIComponent(query)}`,
+          {
+            credentials: "include",
+            signal: controller.signal,
+          },
+        );
+
+        if (response.status === 401) {
+          handleAuthFailure();
+          return;
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || "Search failed");
+        }
+
+        setSearchResults(data.users || []);
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          console.error("Search users error:", error.message);
+          setSearchResults([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setSearchLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+    // Search uses the initial auth failure handler, like the socket effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
+  useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       loadUsers();
     }, 0);
@@ -284,10 +361,6 @@ export default function ChatPage() {
 
     newSocket.on("messageSent", (newMessage) => {
       console.log("Message sent:", newMessage);
-
-      if (!newMessage.isDelivered) {
-        setErrorMessage("Message saved. The recipient is currently offline.");
-      }
 
       addUniqueMessage(newMessage);
 
@@ -916,13 +989,72 @@ export default function ChatPage() {
                       : "Disconnected"}
                 </span>
               </div>
-              <ThemeToggle />
+              <div className="sidebar-actions">
+                <ThemeToggle />
+                <button
+                  type="button"
+                  className="logout-button"
+                  onClick={handleLogout}
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+
+            <div className="sidebar-search">
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSearchQuery(value);
+
+                  if (!value.trim()) {
+                    setSearchResults([]);
+                    setSearchLoading(false);
+                  }
+                }}
+                placeholder="Search username or email"
+                aria-label="Search users by username or email"
+              />
             </div>
 
             {/* USER LIST */}
 
             <div className="chat-users">
-              {loadingUsers ? (
+              {searchQuery.trim() ? (
+                searchLoading ? (
+                  <div className="loading-state">Searching...</div>
+                ) : searchResults.length === 0 ? (
+                  <p className="empty-state">No users found</p>
+                ) : (
+                  searchResults.map((searchUser) => (
+                    <button
+                      key={searchUser._id}
+                      onClick={() => {
+                        selectUser(searchUser);
+                        setSearchQuery("");
+                      }}
+                      className={`chat-user ${
+                        selectedUser?._id === searchUser._id
+                          ? "chat-user-selected"
+                          : ""
+                      }`}
+                    >
+                      <div className="chat-user-row">
+                        <div className="avatar">
+                          {searchUser.username?.charAt(0).toUpperCase()}
+                          {searchUser.isOnline && <span className="online-dot" />}
+                        </div>
+                        <div className="chat-user-info">
+                          <p className="chat-user-name">{searchUser.username}</p>
+                          <p className="chat-user-email">{searchUser.email}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )
+              ) : loadingUsers ? (
                 <div className="loading-state">
                   Loading chats...
                 </div>
@@ -1006,14 +1138,18 @@ export default function ChatPage() {
                                     user?.id && "You: "}
 
                                   {lastMessage.messageType ===
-                                  "image"
+                                  "image" && !lastMessage.isDeleted
                                     ? "📷 Image"
-                                    : lastMessage.content}
+                                    : lastMessage.isDeleted
+                                      ? lastMessage.sender?._id === user?.id
+                                        ? "You deleted a message"
+                                        : "This message was deleted"
+                                      : lastMessage.content}
                                 </>
                               ) : chatUser.isOnline ? (
                                 "Online"
                               ) : (
-                                "Offline"
+                                "Currently offline"
                               )}
                             </p>
 
@@ -1064,7 +1200,7 @@ export default function ChatPage() {
                 <p>
                   {selectedUser.isOnline
                     ? "Online"
-                    : "Offline"}
+                    : "Currently offline"}
                 </p>
                 </div>
               </div>
@@ -1162,7 +1298,13 @@ export default function ChatPage() {
                         {/* MESSAGE + STATUS */}
 
                         <div className="message-content">
-                          {msg.messageType === "image" && !msg.isDeleted ? (
+                          {msg.isDeleted ? (
+                            <p className="deleted-message">
+                              {isMine
+                                ? "You deleted a message"
+                                : "This message was deleted"}
+                            </p>
+                          ) : msg.messageType === "image" ? (
                             <Image
                               src={`${API_URL}${msg.content}`}
                               alt="Shared image"
@@ -1293,7 +1435,7 @@ export default function ChatPage() {
                     </button>
 
                     {showEmojiPicker && (
-                      <div className="absolute bottom-12 right-0 z-40 w-72 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-lg">
+                      <div className="absolute bottom-12 right-0 z-40 w-72 rounded-xl border border-(--line) bg-(--surface) p-3 shadow-lg">
                         <div className="grid grid-cols-8 gap-2 max-h-52 overflow-y-auto">
                           {emojis.map(
                             (emoji, index) => (
