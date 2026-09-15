@@ -249,6 +249,7 @@ export default function ChatPage() {
 
     const controller = new AbortController();
     const timeoutId = window.setTimeout(async () => {
+      
       try {
         setSearchLoading(true);
 
