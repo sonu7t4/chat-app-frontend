@@ -230,14 +230,10 @@ export default function ChatPage() {
   // --------------------------------
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const newSocket = io(process.env.NEXT_PUBLIC_API_URL, {
-      auth: {
-        token,
-      },
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-    });
+    const newSocket = io(API_URL, {
+  withCredentials: true,
+  transports: ["websocket", "polling"],
+});
 
     // --------------------------------
     // SOCKET CONNECTED
